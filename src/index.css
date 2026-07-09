@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --redlife-bg: #05060A;
+  --redlife-accent: #FF003C;
+  --redlife-action: #00E5FF;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--redlife-bg);
+  color: #E8EAF0;
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+#root {
+  position: relative;
+}
+
+/* ScrollControls container — disable Safari overscroll/bounce so it doesn't
+   fight drei's internal scroll capture (spec §2). */
+.canvas-host,
+.canvas-host * {
+  touch-action: pan-y;
+  overscroll-behavior: none;
+}
+
+/* dvh-aware modal sizing for iOS Safari dynamic toolbar (spec §7) */
+.dvh-full {
+  height: 100dvh;
+}
+.dvh-modal {
+  max-height: 90dvh;
+}
+
+/* Body scroll lock helper — applied when modal is open */
+body.modal-open {
+  overflow: hidden;
+}
+
+/* Subtle scanline / vignette treatment — pure CSS, no post-processing */
+.scanlines::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.55) 100%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.012) 0px,
+      rgba(255, 255, 255, 0.012) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+  z-index: 50;
+  mix-blend-mode: normal;
+}
+
+/* Glowing accent text */
+.text-glow {
+  text-shadow:
+    0 0 12px rgba(255, 0, 60, 0.55),
+    0 0 24px rgba(255, 0, 60, 0.25);
+}
+
+/* Hide focus outline only when not keyboard navigating */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--redlife-action);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
