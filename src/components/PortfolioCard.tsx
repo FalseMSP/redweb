@@ -100,15 +100,42 @@ export function PortfolioCard({
   // cache means Scene and this card always resolve from the same underlying
   // load, so the loading screen can't dismiss based on a throwaway "preload"
   // copy finishing while this card's actual texture is still in flight.
+  //
+  // Fallback chain: if the primary thumbnail URL 404s (which happens for
+  // some YouTube videos — maxresdefault.jpg only exists for high-res
+  // uploads), automatically retry with progressively smaller thumbnail
+  // sizes. hqdefault.jpg exists for virtually every YouTube video.
   const thumbnailSrc = project.thumbnail;
+  const [fallbackUrl, setFallbackUrl] = useState<string | null>(null);
   const [textureError, setTextureError] = useState(false);
-  const cardTexture = useMemo(() => {
-    if (!thumbnailSrc) return null;
-    if (thumbnailSrc.startsWith('data:image/svg+xml')) return null;
-    if (textureError) return null;
 
-    return getSharedTexture(thumbnailSrc, (aspect, errored) => {
+  // Compute the fallback URL if the primary URL looks like a YouTube
+  // thumbnail (i.ytimg.com or img.youtube.com) — extract the video ID and
+  // swap in a smaller thumbnail size.
+  const effectiveUrl = fallbackUrl ?? thumbnailSrc;
+
+  const cardTexture = useMemo(() => {
+    if (!effectiveUrl) return null;
+    if (effectiveUrl.startsWith('data:image/svg+xml')) return null;
+    if (textureError && !fallbackUrl) return null;
+    if (textureError && fallbackUrl) return null; // both attempts failed
+
+    return getSharedTexture(effectiveUrl, (aspect, errored) => {
       if (errored) {
+        // Try the fallback chain: if we haven't tried a fallback yet and
+        // the URL is a YouTube thumbnail, swap to hqdefault.jpg (which
+        // exists for virtually every video).
+        if (!fallbackUrl) {
+          const ytMatch = effectiveUrl.match(
+            /^https?:\/\/(?:i\.ytimg|img\.youtube)\.com\/vi\/([A-Za-z0-9_-]{11})\//,
+          );
+          if (ytMatch) {
+            const fallback = `https://i.ytimg.com/vi/${ytMatch[1]}/hqdefault.jpg`;
+            setTextureError(false);
+            setFallbackUrl(fallback);
+            return;
+          }
+        }
         setTextureError(true);
         return;
       }
@@ -116,7 +143,7 @@ export function PortfolioCard({
         setImageAspect(aspect);
       }
     });
-  }, [thumbnailSrc, textureError]);
+  }, [effectiveUrl, textureError, fallbackUrl]);
 
   const material = useMemo(
     () =>
@@ -222,8 +249,13 @@ export function PortfolioCard({
     SCRATCH_COLOR.copy(BASE_COLOR_DEFAULT).lerp(BASE_COLOR_HOVER, state.hoverT * 0.6);
     setFlatBaseColor(material, SCRATCH_COLOR);
 
-    // Loading shimmer — pulse rim while texture is pending.
-    const textureLoading = !cardTexture && !thumbnailSrc.startsWith('data:image/svg+xml') && !!thumbnailSrc && !textureError;
+    // Loading shimmer — pulse rim while texture is pending or errored.
+    // Uses effectiveUrl so the shimmer also shows during the fallback retry.
+    const textureLoading =
+      !cardTexture &&
+      !!effectiveUrl &&
+      !effectiveUrl.startsWith('data:image/svg+xml') &&
+      !textureError;
     let rimBase = 0.6 + state.hoverT * 0.9;
     let borderBase = 1.4 + state.hoverT * 0.8;
     if (textureLoading) {

@@ -368,7 +368,7 @@ function Cookies() {
       </p>
       <p>
         <strong className="text-redlife-ink">Third-Party Resources.</strong>{' '}
-        YouTube thumbnail images are loaded from <code>img.youtube.com</code>
+        YouTube thumbnail images are loaded from <code>i.ytimg.com</code>
         and may set cookies under YouTube's own privacy policy. Google Fonts
         are loaded from Google's CDN. These third parties may set cookies or
         collect technical data per their own policies, which we do not control.

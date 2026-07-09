@@ -37,7 +37,7 @@ export const projects: Project[] = [
     title: 'Ray Traced Audio Engine',
     description:
       'An abstracted ray traced sound engine built on OpenAL, designed to handle three different software architectures while running on all hardware and operating systems. The engine uses non-blocking multithreading for efficiency, allowing audio processing to scale without bottlenecking the main render loop. The project has accumulated over half a million users across its lifetime and remains actively maintained — 112 issues closed, four total contributors, with FalseMSP as git master and majority contributor. The full technical breakdown — including the ray tracing acceleration structure, the threading model, and the architecture abstraction layer — is in the video linked below.',
-    thumbnail: 'https://img.youtube.com/vi/xYEn5TlQ6Yw/maxresdefault.jpg',
+    thumbnail: 'https://i.ytimg.com/vi/xYEn5TlQ6Yw/sddefault.jpg',
     tags: ['OpenAL', 'C++', 'Audio', 'Open Source'],
     year: 2025,
     impressiveness: 1.8,
@@ -59,7 +59,7 @@ export const projects: Project[] = [
     title: 'Realtime 3D Mocap & Pose Estimation',
     description:
       'A realtime 3D pose estimation pipeline built on OpenCV, designed to track fingers, hands, and faces on weak hardware where most CV pipelines fall over. The system handles edge cases gracefully — partial occlusions, fast motion, low light — instead of losing tracking like a naive implementation would. Data is encoded as a USB stream and sent to a host computer live, so the mocap data can drive character rigs or interaction in real time. Emotions are classified as floats rather than discrete labels, giving character rigs a continuous expressive range instead of canned happy / sad / angry states.',
-    thumbnail: 'https://img.youtube.com/vi/FsLxQOMi2Yc/maxresdefault.jpg',
+    thumbnail: 'https://i.ytimg.com/vi/FsLxQOMi2Yc/sddefault.jpg',
     tags: ['OpenCV', 'Computer Vision', 'Real-time'],
     year: 2026,
     impressiveness: 1.5,
@@ -88,7 +88,7 @@ export const projects: Project[] = [
     title: 'YouTube → Shorts Converter',
     description:
       'An automated YouTube-video-to-Shorts converter that takes a long-form video and produces vertical short-form cuts suitable for YouTube Shorts. Verified for the Google Cloud API (which matters — Google\'s API approval process for video tooling is non-trivial). The tool has generated over 500,000 views across the Shorts it produced, which is the metric that actually matters for this kind of automation.',
-    thumbnail: 'https://img.youtube.com/vi/GO7JgBozQ8k/maxresdefault.jpg',
+    thumbnail: 'https://i.ytimg.com/vi/GO7JgBozQ8k/sddefault.jpg',
     tags: ['Google Cloud API', 'Automation', 'YouTube'],
     year: 2023,
     impressiveness: 1.1,

@@ -23,6 +23,7 @@ import { PortfolioCard } from './PortfolioCard';
 import { Icosahedron } from './Icosahedron';
 import { BlobShadow } from './BlobShadow';
 import { YouTubeOrbitField } from './YouTubeOrbitField';
+import { getFallbackYouTubeThumbnailUrls } from '@/hooks/useYouTubeVideos';
 
 /**
  * Scene — top-level 3D entry.
@@ -82,9 +83,19 @@ export function Scene() {
   // render will resolve to — not a separate throwaway fetch.
   useEffect(() => {
     let cancelled = false;
-    const urls = projects
+    // Preload both project thumbnails AND YouTube fallback thumbnails.
+    // The YouTube thumbnails are the initial-render set (from the hook's
+    // FALLBACK_VIDEOS). Without preloading them here, the loading screen
+    // could dismiss before YouTube textures finish loading — the
+    // `assetsResolved` gate only counts URLs we explicitly track, so we
+    // must include YouTube URLs in the list. (useProgress tracks all
+    // DefaultLoadingManager activity, but assetsResolved is an
+    // independent gate that requires every URL's onReady callback to fire.)
+    const projectUrls = projects
       .map((p) => p.thumbnail)
       .filter((url) => !!url && !url.startsWith('data:image/svg+xml'));
+    const youtubeUrls = getFallbackYouTubeThumbnailUrls(8);
+    const urls = [...projectUrls, ...youtubeUrls];
 
     if (urls.length === 0) {
       setAssetsResolved(true);

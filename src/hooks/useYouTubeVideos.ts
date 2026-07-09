@@ -85,6 +85,22 @@ const FALLBACK_VIDEOS: YouTubeVideo[] = (() => {
   return out;
 })();
 
+/**
+ * Returns the thumbnail URLs from the build-time fallback video list, sliced
+ * to `maxResults`. Used by Scene.tsx's preload effect to ensure YouTube
+ * thumbnails are tracked by the loading gate — without this, the loading
+ * screen can dismiss before YouTube textures finish loading, causing
+ * visible pop-in / stretching.
+ *
+ * This only covers the fallback URLs (the initial render). If the live RSS
+ * fetch returns different video IDs, those textures will load lazily — but
+ * the fallback is what the user sees first, so preloading it eliminates the
+ * most visible pop-in.
+ */
+export function getFallbackYouTubeThumbnailUrls(maxResults = 8): string[] {
+  return FALLBACK_VIDEOS.slice(0, maxResults).map((v) => v.thumbnail);
+}
+
 // --- HTML parsers -----------------------------------------------------------
 
 /**
