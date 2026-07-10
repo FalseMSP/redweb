@@ -126,6 +126,7 @@ function YouTubeCard3D({
   const { camera } = useThree();
   const [hovered, setHovered] = useState(false);
   const [textureError, setTextureError] = useState(false);
+  const [fallbackUrl, setFallbackUrl] = useState<string | null>(null);
 
   const groupRef = useRef<THREE.Group>(null);
 
@@ -164,12 +165,77 @@ function YouTubeCard3D({
   // kind-based default (16:9 for long, 9:16 for short).
   const [imageAspect, setImageAspect] = useState<number | null>(null);
 
-  // Texture loaded via the shared cache. i.ytimg.com sends CORS headers, so
-  // THREE.TextureLoader can pull these directly without a proxy.
+  // Texture loaded via the shared cache. i.ytimg.com sends CORS headers
+  // (Access-Control-Allow-Origin: *), so THREE.TextureLoader can pull these
+  // directly without a proxy.
+  //
+  // Fallback chain: if the primary thumbnail URL 404s (which happens for
+  // some YouTube thumbnails — e.g. oardefault.jpg or frame0.jpg only exist
+  // for some videos), automatically retry with a smaller/more-reliable
+  // thumbnail size. This mirrors PortfolioCard's fallback approach.
+  //
+  // For long-form videos (mqdefault.jpg primary):
+  //   mqdefault.jpg (320×180, 16:9, ~5KB) — exists for virtually every video
+  //   -> hqdefault.jpg (480×360, 4:3 with black bars, ~10KB) — exists for ALL
+  //
+  // For Shorts (frame0.jpg primary):
+  //   frame0.jpg (268×480, 9:16, ~24KB) — exists for most Shorts but not all
+  //   -> oardefault.jpg (1080×1920, 9:16, ~120KB) — exists for most Shorts
+  //   -> hqdefault.jpg (480×360, 4:3 with black bars, ~10KB) — exists for ALL
+  //
+  // The fallback keeps the same orientation (portrait for Shorts) wherever
+  // possible — only the last resort (hqdefault) sacrifices orientation, but
+  // at least an image shows.
+  const primaryThumbnail = video.thumbnail;
+  const effectiveUrl = fallbackUrl ?? primaryThumbnail;
+
   const cardTexture = useMemo(() => {
-    if (textureError || !video.thumbnail) return null;
-    return getSharedTexture(video.thumbnail, (aspect, errored) => {
+    // textureError is only set when the LAST attempted URL failed. When
+    // fallbackUrl changes (below), we reset textureError so the new URL
+    // gets a clean attempt. The useEffect that resets textureError on
+    // fallbackUrl change runs AFTER this useMemo on the first render with
+    // a new fallbackUrl, so we also guard here: if there's a fallbackUrl
+    // pending (i.e. we just switched), allow the load even if textureError
+    // is still true from the previous attempt.
+    if (!effectiveUrl) return null;
+    if (textureError && !fallbackUrl) return null; // primary failed, no fallback tried yet... actually this shouldn't happen since textureError is only set after all fallbacks exhausted
+    if (textureError && fallbackUrl === effectiveUrl) return null; // this specific URL failed
+
+    return getSharedTexture(effectiveUrl, (aspect, errored) => {
       if (errored) {
+        // Try the fallback chain based on the current URL and video kind.
+        // We use a regex to detect YouTube thumbnail URLs and extract the
+        // video ID, then swap to a more reliable size.
+        const ytMatch = effectiveUrl.match(
+          /^https?:\/\/(?:i\.ytimg|img\.youtube)\.com\/vi\/([A-Za-z0-9_-]{11})\//,
+        );
+        if (!ytMatch) {
+          setTextureError(true);
+          return;
+        }
+        const videoId = ytMatch[1];
+
+        if (isShort) {
+          // Shorts chain: frame0 -> oardefault -> hqdefault
+          if (effectiveUrl.includes('/frame0.jpg')) {
+            setTextureError(false);
+            setFallbackUrl(`https://i.ytimg.com/vi/${videoId}/oardefault.jpg`);
+            return;
+          }
+          if (effectiveUrl.includes('/oardefault.jpg')) {
+            setTextureError(false);
+            setFallbackUrl(`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`);
+            return;
+          }
+        } else {
+          // Long-form chain: mqdefault -> hqdefault
+          if (effectiveUrl.includes('/mqdefault.jpg')) {
+            setTextureError(false);
+            setFallbackUrl(`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`);
+            return;
+          }
+        }
+        // All fallbacks exhausted.
         setTextureError(true);
         return;
       }
@@ -177,7 +243,7 @@ function YouTubeCard3D({
         setImageAspect(aspect);
       }
     });
-  }, [video.thumbnail, textureError]);
+  }, [effectiveUrl, textureError, fallbackUrl, isShort]);
 
   // Compute card dimensions from the actual image aspect ratio if available,
   // falling back to the kind-based default. This mirrors PortfolioCard's
@@ -319,14 +385,21 @@ function YouTubeCard3D({
     const idleSway = Math.sin(state.idleTime * 0.5 + idleSwayPhase) * 0.025 * idleFactor;
     g.rotation.z += idleSway;
 
-    // Rim intensity: pulse while texture is still loading, boost on hover.
+    // Rim intensity: pulse the CARD FACE while texture is still loading,
+    // but keep the BORDER solid (no shimmer). The border should always be
+    // a stable, visible frame — shimmering it made it look like the border
+    // was "not loading" when in fact it was just pulsing dim.
+    //
+    // textureLoading is true when we have no texture AND no error yet (i.e.
+    // still in the process of loading, including fallback transitions where
+    // the new texture hasn't resolved yet).
     const textureLoading = !cardTexture && !textureError;
     let rimBase = 0.7 + state.hoverT * 0.8;
     let borderBase = 1.2 + state.hoverT * 0.6;
     if (textureLoading) {
       const shimmer = 0.5 + Math.sin(state.idleTime * 3 + idlePhase) * 0.5;
+      // Only shimmer the card face rim — NOT the border.
       rimBase += shimmer * 0.8;
-      borderBase += shimmer * 0.6;
     }
     // Fade rim out as the card exits (when cardVisibility drops back to 0).
     rimBase *= v;
@@ -397,12 +470,18 @@ function YouTubeCard3D({
           aspect ratio changes — geometry, material, and texture all swap in
           the same commit with no one-frame gap showing the old geometry.
           This is the same pattern PortfolioCard uses. */}
+      {/* frustumCulled={false}: same reason as PortfolioCard — during the
+          intro phase the cards sit 10 units below their target Y, outside
+          the camera frustum. Without this, Three.js skips the draw call and
+          the texture/border shader never warms up on the GPU, causing pop-in
+          after the loading screen fades. See PortfolioCard for full detail. */}
       <mesh
         key={imageAspect ?? 'pre-aspect'}
         geometry={geometry}
         material={material}
         castShadow={false}
         receiveShadow={false}
+        frustumCulled={false}
       />
       <mesh
         key={`border-${imageAspect ?? 'pre-aspect'}`}
@@ -411,6 +490,7 @@ function YouTubeCard3D({
         position={[0, 0, 0.01]}
         castShadow={false}
         receiveShadow={false}
+        frustumCulled={false}
       />
     </group>
   );

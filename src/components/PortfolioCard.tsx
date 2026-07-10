@@ -326,12 +326,24 @@ export function PortfolioCard({
       {/* key includes imageAspect so the mesh remounts atomically when the
           aspect ratio changes — geometry, material, and texture all swap in
           the same commit with no one-frame gap showing the old geometry. */}
+      {/* frustumCulled={false}: during the intro phase (scroll offset 0–0.12)
+          cardVisibility=0, which positions every card 10 units below its
+          target Y — well outside the camera frustum. Three.js's default
+          frustum culling would skip the draw call for these off-screen cards,
+          which means the texture never gets uploaded to the GPU and the
+          border shader never gets compiled until the card actually enters
+          the frustum (i.e. when the user scrolls). That causes visible
+          border/texture pop-in AFTER the loading screen has already faded.
+          Disabling frustum culling forces a draw call every frame so the GPU
+          resources are warmed up during the loading phase. The per-card cost
+          is negligible — these are simple flat-shaded planes. */}
       <mesh
         key={imageAspect ?? 'pre-aspect'}
         geometry={geometry}
         material={material}
         castShadow={false}
         receiveShadow={false}
+        frustumCulled={false}
       >
         <primitive object={material} ref={materialRef} attach="material" />
       </mesh>
@@ -342,6 +354,7 @@ export function PortfolioCard({
         position={[0, 0, 0.01]}
         castShadow={false}
         receiveShadow={false}
+        frustumCulled={false}
       />
     </group>
   );

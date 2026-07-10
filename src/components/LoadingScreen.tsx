@@ -6,7 +6,7 @@ import { useStore } from '@/store';
  * LoadingScreen — displayed while 3D assets load.
  *
  * Driven by drei's useProgress via the store (Scene wires it up).
- * Shows the tagline "Building the tools to enhance creativity." and a
+ * Shows the tagline "Turning imagination into interactive worlds." and a
  * progress bar. Disappears with a Framer Motion exit animation when loading
  * completes.
  *
@@ -66,7 +66,7 @@ export function LoadingScreen({ forceVisible }: LoadingScreenProps) {
 
   const tagline = timedOut
     ? 'Having trouble loading — you can still scroll.'
-    : 'Building the tools to enhance creativity.';
+    : 'Building the tools to bloom creativity.';
 
   return (
     <LoadingScreenInner

@@ -20,7 +20,7 @@ import { getSharedTexture } from '@/lib/textureCache';
 import { CameraRig } from './CameraRig';
 import { ParticleField } from './ParticleField';
 import { PortfolioCard } from './PortfolioCard';
-import { Icosahedron } from './Icosahedron';
+import { GLBAssetSafe } from './GLBAsset';
 import { BlobShadow } from './BlobShadow';
 import { YouTubeOrbitField } from './YouTubeOrbitField';
 import { getFallbackYouTubeThumbnailUrls } from '@/hooks/useYouTubeVideos';
@@ -44,7 +44,7 @@ import { getFallbackYouTubeThumbnailUrls } from '@/hooks/useYouTubeVideos';
  *
  * The loading screen dismiss is additionally gated on `assetsResolved`
  * (every thumbnail's aspect ratio has actually been assigned) rather than
- * on manager progress alone, plus a two-frame defer once both signals are
+ * on manager progress alone, plus a three-frame defer once both signals are
  * true. This matters because "the image finished downloading" (which is
  * all useProgress/the manager knows about) happens before React has
  * re-rendered PortfolioCard with the correct aspect ratio, remounted its
@@ -52,6 +52,15 @@ import { getFallbackYouTubeThumbnailUrls } from '@/hooks/useYouTubeVideos';
  * actually upload the texture to the GPU. Without this gate, the loading
  * screen could fade out a frame or two before the border/texture had
  * actually been painted at the right size.
+ *
+ * NOTE: the card meshes also set `frustumCulled={false}`. During the intro
+ * phase (scroll offset 0–0.12) every card sits ~10 units below its target
+ * Y, outside the camera frustum. Three.js's default frustum culling would
+ * skip those draw calls, so the texture would never upload to the GPU and
+ * the border shader would never compile — causing the exact pop-in the
+ * loading gate is trying to prevent. Disabling frustum culling on the card
+ * meshes guarantees the first draw after the material rebuild actually
+ * lands on the GPU, which is what the three RAFs below are waiting for.
  */
 export function Scene() {
   const tier = useDeviceTier();
@@ -137,18 +146,27 @@ export function Scene() {
     // Both signals say "done" — but React still needs a render pass to
     // commit the aspect-driven mesh remounts (PortfolioCard's
     // `key={imageAspect}`) and the renderer needs a draw call to actually
-    // upload the texture to the GPU. Defer the dismiss by two animation
+    // upload the texture to the GPU. Defer the dismiss by three animation
     // frames so that work has landed on screen before the fade starts.
+    //   RAF 1: React commit lands; R3F render loop draws the scene. With
+    //          frustumCulled=false on card meshes, the draw call fires and
+    //          the material compiles + texture upload begins.
+    //   RAF 2: Texture upload completes; border shader finishes compiling.
+    //   RAF 3: One more paint with the final GPU state before the fade.
     let raf1 = 0;
     let raf2 = 0;
+    let raf3 = 0;
     raf1 = requestAnimationFrame(() => {
       raf2 = requestAnimationFrame(() => {
-        setLoading(false);
+        raf3 = requestAnimationFrame(() => {
+          setLoading(false);
+        });
       });
     });
     return () => {
       cancelAnimationFrame(raf1);
       cancelAnimationFrame(raf2);
+      cancelAnimationFrame(raf3);
     };
   }, [progress, active, setLoadProgress, setLoading, preloadsStarted, assetsResolved]);
 
@@ -367,14 +385,34 @@ function SceneContents({ tier, reducedMotion }: SceneContentsProps) {
 
       {/* World group — rotates with scroll. */}
       <group ref={worldRef}>
-        {/* Hero object — always visible. The faceted icosahedron is the
-            intended permanent hero visual (flat-shaded, unlit, with a
-            fresnel rim — consistent with the rendering pipeline). To swap
-            in a real GLB, drop a Draco-compressed file at
-            /public/assets/models/hero.glb and replace <Icosahedron> with
-            <GLBAssetSafe path="/assets/models/hero.glb" usePlaceholder={false} />. */}
+        {/* Hero object — always visible. Renders the Draco-compressed (or
+            uncompressed) GLB at /public/assets/models/hero.glb. If the file
+            is missing or fails to load, GLBAssetSafe falls back to the
+            faceted Icosahedron. To revert to the icosahedron permanently,
+            set usePlaceholder={true} or swap this back to <Icosahedron>.
+
+            GLBAsset preserves the GLB's original PBR materials/textures and
+            only adds a red fresnel rim on top. PBR materials need light to
+            render (without lights, MeshStandardMaterial is black), so we add
+            an ambient + directional light here. These lights ONLY affect lit
+            materials — every other object in the scene uses RedLifeFlatMaterial
+            with `lights = false`, so they're completely unaffected. */}
         <group ref={heroRef}>
-          <Icosahedron baseColor="#0B0D14" rimColor="#FF003C" />
+          {/* Lighting for the GLB only. Intensity tuned to look "lit but
+              moody" — adjust if your model comes in too dark or too bright.
+              The directional light is positioned to come from above-front,
+              matching the camera's viewing direction so the rim reads on
+              the silhouette. */}
+          <ambientLight intensity={0.6} />
+          <directionalLight position={[3, 5, 5]} intensity={1.2} color="#FFFFFF" />
+
+          <GLBAssetSafe
+            path="/assets/models/hero.glb"
+            usePlaceholder={false}
+            rimColor="#FF003C"
+            rimPower={2.3}
+            rimIntensity={0.85}
+          />
           <BlobShadow position={[0, -1.7, 0]} scale={[2.2, 0.6]} opacity={0.75} />
         </group>
 

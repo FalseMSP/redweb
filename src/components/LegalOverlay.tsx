@@ -284,8 +284,8 @@ function DMCA() {
       <p>
         <strong className="text-redlife-ink">Designated Copyright Agent.</strong>{' '}
         Send DMCA notices to:{' '}
-        <a href="mailto:legal@redlife.studio" className="text-redlife-accent underline">
-          legal@redlife.studio
+        <a href="mailto:redlifemc@gmail.com" className="text-redlife-accent underline">
+          redlifemc@gmail.com
         </a>{' '}
         with the subject line "DMCA Takedown Notice." We will respond to valid
         notices within 10 business days, consistent with 17 U.S.C. § 512.
@@ -334,8 +334,8 @@ function Accessibility() {
         <strong className="text-redlife-ink">Feedback.</strong>{' '}
         If you encounter an accessibility barrier on this site, please contact
         us at{' '}
-        <a href="mailto:accessibility@redlife.studio" className="text-redlife-accent underline">
-          accessibility@redlife.studio
+        <a href="mailto:redlifemc@gmail.com" className="text-redlife-accent underline">
+          redlifemc@gmail.com
         </a>{' '}
         with a description of the issue. We take accessibility feedback
         seriously and will work to address valid concerns promptly.
@@ -444,32 +444,32 @@ function LegalContact() {
           <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-redlife-muted">
             General / Legal
           </div>
-          <a href="mailto:legal@redlife.studio" className="mt-1 block text-sm text-redlife-accent underline">
-            legal@redlife.studio
+          <a href="mailto:redlifemc@gmail.com" className="mt-1 block text-sm text-redlife-accent underline">
+            redlifemc@gmail.com
           </a>
         </div>
         <div className="rounded-lg border border-redlife-line bg-black/30 p-3">
           <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-redlife-muted">
             DMCA Agent
           </div>
-          <a href="mailto:legal@redlife.studio" className="mt-1 block text-sm text-redlife-accent underline">
-            legal@redlife.studio
+          <a href="mailto:redlifemc@gmail.com" className="mt-1 block text-sm text-redlife-accent underline">
+            redlifemc@gmail.com
           </a>
         </div>
         <div className="rounded-lg border border-redlife-line bg-black/30 p-3">
           <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-redlife-muted">
             Privacy (CCPA / COPPA)
           </div>
-          <a href="mailto:privacy@redlife.studio" className="mt-1 block text-sm text-redlife-accent underline">
-            privacy@redlife.studio
+          <a href="mailto:redlifemc@gmail.com" className="mt-1 block text-sm text-redlife-accent underline">
+            redlifemc@gmail.com
           </a>
         </div>
         <div className="rounded-lg border border-redlife-line bg-black/30 p-3">
           <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-redlife-muted">
             Accessibility
           </div>
-          <a href="mailto:accessibility@redlife.studio" className="mt-1 block text-sm text-redlife-accent underline">
-            accessibility@redlife.studio
+          <a href="mailto:redlifemc@gmail.com" className="mt-1 block text-sm text-redlife-accent underline">
+            redlifemc@gmail.com
           </a>
         </div>
       </div>
