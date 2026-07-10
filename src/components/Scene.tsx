@@ -253,45 +253,66 @@ function SceneContents({ tier, reducedMotion }: SceneContentsProps) {
   // --- Scroll forwarding (wheel + touch) -------------------------------------
   // The canvas can intercept wheel AND touch events before they reach drei's
   // scroll container. This listener finds the scroll container ONCE and caches
-  // it, then forwards wheel deltas and touch drags to it. Cache is invalidated
-  // on window resize.
+  // it, then forwards wheel deltas and touch drags to it.
   //
   // MOBILE FIX: the original code only handled `wheel` events (desktop mice).
-  // On mobile, swiping on the canvas produced `touchstart`/`touchmove`/
-  // `touchend` events that the canvas swallowed — drei's scroll container
-  // never saw them, so scrolling didn't work. Now we forward touch events
-  // too, manually translating touch deltas to scrollTop changes. This gives
-  // mobile users the same scroll behavior as desktop (with momentum via
-  // drei's built-in damping).
+  // On mobile, swiping produces `touchstart`/`touchmove`/`touchend` events
+  // that the canvas (or HTML overlays) swallowed — drei's scroll container
+  // never saw them. Now we listen on `window` for touch events so we catch
+  // ALL touches regardless of what element is under the finger.
+  //
+  // DEBUG: set `localStorage.debug_touch = '1'` in the console to see
+  // verbose touch/scroll logging.
   const scrollContainerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
+    const DEBUG = typeof localStorage !== 'undefined' && localStorage.getItem('debug_touch') === '1';
+
     const findScrollContainer = (): HTMLElement | null => {
+      // Strategy 1: walk up from the canvas looking for a scrollable div.
       const canvas = document.querySelector('canvas');
-      if (!canvas) return null;
-      let parent: HTMLElement | null = canvas.parentElement;
-      for (let i = 0; i < 5 && parent; i++) {
-        const divs = parent.querySelectorAll('div');
-        for (const div of divs) {
-          const style = getComputedStyle(div);
-          if (
-            (style.overflowY === 'auto' || style.overflowY === 'scroll') &&
-            div.scrollHeight > div.clientHeight
-          ) {
-            return div as HTMLElement;
+      if (canvas) {
+        let parent: HTMLElement | null = canvas.parentElement;
+        for (let i = 0; i < 10 && parent; i++) {
+          const divs = parent.querySelectorAll('div');
+          for (const div of divs) {
+            const style = getComputedStyle(div);
+            if (
+              (style.overflowY === 'auto' || style.overflowY === 'scroll') &&
+              div.scrollHeight > div.clientHeight
+            ) {
+              return div as HTMLElement;
+            }
           }
+          parent = parent.parentElement;
         }
-        parent = parent.parentElement;
       }
+
+      // Strategy 2: search the entire document for a scrollable div that
+      // looks like drei's ScrollControls container (large scrollHeight).
+      const allDivs = document.querySelectorAll('div');
+      for (const div of allDivs) {
+        const style = getComputedStyle(div);
+        if (
+          (style.overflowY === 'auto' || style.overflowY === 'scroll') &&
+          div.scrollHeight > div.clientHeight
+        ) {
+          if (DEBUG) console.log('[touch] found scroll container via global search', div);
+          return div as HTMLElement;
+        }
+      }
+
       return null;
     };
 
-    // Initial lookup (deferred to next tick so drei has mounted its container).
+    // Initial lookup (deferred so drei has mounted its container).
     const initTimer = setTimeout(() => {
-      scrollContainerRef.current = findScrollContainer();
-    }, 100);
+      const container = findScrollContainer();
+      scrollContainerRef.current = container;
+      if (DEBUG) console.log('[touch] init scroll container:', container);
+    }, 200);
 
-    // Invalidate cache on resize (drei may rebuild the container).
+    // Re-find on resize (drei may rebuild the container).
     const onResize = () => {
       scrollContainerRef.current = findScrollContainer();
     };
@@ -300,32 +321,36 @@ function SceneContents({ tier, reducedMotion }: SceneContentsProps) {
     // --- Wheel (desktop) ---
     const onWheel = (e: WheelEvent) => {
       if (document.body.classList.contains('modal-open')) return;
-      // Use cached container; re-lookup only if cache is empty.
       let container = scrollContainerRef.current;
       if (!container) {
         container = findScrollContainer();
         scrollContainerRef.current = container;
       }
-      if (!container) return;
+      if (!container) {
+        if (DEBUG) console.warn('[touch] wheel: no scroll container found');
+        return;
+      }
       e.preventDefault();
       container.scrollTop += e.deltaY;
     };
 
     // --- Touch (mobile) ---
-    // Track the last touch Y position to compute drag deltas. We use
-    // `passive: false` so we can call preventDefault() — this stops the
-    // browser from also trying to scroll the page body (which has
-    // overflow:hidden and would cause weird rubber-banding on iOS).
-    let touchStartY = 0;
+    // We listen on `window` (not the canvas) so we catch ALL touches
+    // regardless of whether they land on the canvas or an HTML overlay.
+    // The key insight: once a touchstart fires on an element, all subsequent
+    // touchmove/touchend events for that gesture go to the SAME element —
+    // but by listening on window with capture, we see them regardless.
     let lastTouchY = 0;
     let isTouching = false;
+    let touchMoveCount = 0;
 
     const onTouchStart = (e: TouchEvent) => {
       if (document.body.classList.contains('modal-open')) return;
-      if (e.touches.length !== 1) return; // ignore multi-touch (pinch-zoom etc)
-      touchStartY = e.touches[0].clientY;
-      lastTouchY = touchStartY;
+      if (e.touches.length !== 1) return;
+      lastTouchY = e.touches[0].clientY;
       isTouching = true;
+      touchMoveCount = 0;
+      if (DEBUG) console.log('[touch] touchstart y=', lastTouchY);
     };
 
     const onTouchMove = (e: TouchEvent) => {
@@ -338,45 +363,49 @@ function SceneContents({ tier, reducedMotion }: SceneContentsProps) {
         container = findScrollContainer();
         scrollContainerRef.current = container;
       }
-      if (!container) return;
+      if (!container) {
+        if (DEBUG && touchMoveCount === 0) console.warn('[touch] touchmove: no scroll container found');
+        return;
+      }
 
-      // Prevent the browser's native scroll — we're handling it ourselves.
+      // Prevent native scroll so the browser doesn't fight our manual forwarding.
       e.preventDefault();
 
       const currentY = e.touches[0].clientY;
-      const deltaY = lastTouchY - currentY; // dragging down = positive = scroll down
+      const deltaY = lastTouchY - currentY; // dragging finger up = positive = scroll down
       container.scrollTop += deltaY;
       lastTouchY = currentY;
+      touchMoveCount++;
+
+      if (DEBUG && touchMoveCount % 10 === 0) {
+        console.log('[touch] touchmove', { deltaY, scrollTop: container.scrollTop, scrollHeight: container.scrollHeight, clientHeight: container.clientHeight });
+      }
     };
 
     const onTouchEnd = () => {
+      if (DEBUG && isTouching) console.log('[touch] touchend after', touchMoveCount, 'move events');
       isTouching = false;
     };
 
-    // Attach wheel to window (desktop). Attach touch to the canvas itself —
-    // touch events target the element under the finger, and the canvas is
-    // what's under the finger on mobile. Using `passive: false` on touchmove
-    // is critical so we can call preventDefault().
+    // Attach all listeners to window so we don't miss events.
+    // Use capture: true for touchmove so we get the event before any other
+    // handler can preventDefault it or stopPropagation.
     window.addEventListener('wheel', onWheel, { passive: false });
+    window.addEventListener('touchstart', onTouchStart, { passive: true, capture: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: false, capture: true });
+    window.addEventListener('touchend', onTouchEnd, { passive: true, capture: true });
+    window.addEventListener('touchcancel', onTouchEnd, { passive: true, capture: true });
 
-    const canvas = document.querySelector('canvas');
-    if (canvas) {
-      canvas.addEventListener('touchstart', onTouchStart, { passive: true });
-      canvas.addEventListener('touchmove', onTouchMove, { passive: false });
-      canvas.addEventListener('touchend', onTouchEnd, { passive: true });
-      canvas.addEventListener('touchcancel', onTouchEnd, { passive: true });
-    }
+    if (DEBUG) console.log('[touch] listeners attached to window');
 
     return () => {
       clearTimeout(initTimer);
       window.removeEventListener('resize', onResize);
       window.removeEventListener('wheel', onWheel);
-      if (canvas) {
-        canvas.removeEventListener('touchstart', onTouchStart);
-        canvas.removeEventListener('touchmove', onTouchMove);
-        canvas.removeEventListener('touchend', onTouchEnd);
-        canvas.removeEventListener('touchcancel', onTouchEnd);
-      }
+      window.removeEventListener('touchstart', onTouchStart, { capture: true } as EventListenerOptions);
+      window.removeEventListener('touchmove', onTouchMove, { capture: true } as EventListenerOptions);
+      window.removeEventListener('touchend', onTouchEnd, { capture: true } as EventListenerOptions);
+      window.removeEventListener('touchcancel', onTouchEnd, { capture: true } as EventListenerOptions);
     };
   }, []);
 

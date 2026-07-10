@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Touch Diagnostic</title>
+<style>
+body { font-family: monospace; background: #05060A; color: #e0e0e0; padding: 20px; margin: 0; }
+h1 { color: #FF003C; font-size: 18px; }
+h2 { color: #FF6B6B; margin-top: 20px; font-size: 15px; }
+.box { background: #111; border: 1px solid #333; border-radius: 8px; padding: 16px; margin: 8px 0; }
+.log { background: #000; border: 1px solid #333; border-radius: 4px; padding: 8px; height: 300px; overflow-y: auto; font-size: 11px; line-height: 1.5; }
+.log div { margin: 2px 0; }
+.event-touchstart { color: #4af; }
+.event-touchmove { color: #ff4; }
+.event-touchend { color: #4fa; }
+.event-wheel { color: #f4a; }
+.event-scroll { color: #a4f; }
+.dim { color: #888; }
+.red { color: #FF003C; }
+.green { color: #4a4; }
+button { background: #FF003C; color: white; border: none; padding: 8px 16px; border-radius: 4px; font-family: monospace; cursor: pointer; margin: 4px 0; }
+.touchpad { background: #1a1a2a; border: 2px dashed #FF003C; border-radius: 8px; height: 200px; display: flex; align-items: center; justify-content: center; color: #888; user-select: none; -webkit-user-select: none; touch-action: none; }
+.info { background: #1a1a3a; border-left: 4px solid #44a; padding: 8px; margin: 8px 0; border-radius: 4px; }
+</style>
+</head>
+<body>
+<h1>RedWeb Touch Event Diagnostic</h1>
+
+<div class="info">
+  <strong>How to use:</strong> Swipe up and down in the box below.
+  Check the console log to see if touch events are firing.
+  Open your browser's developer console (F12 on desktop, or via URL bar on mobile) to see logs.
+</div>
+
+<h2>1. Touch Event Test Area</h2>
+<div class="touchpad" id="touchpad">
+  Swipe here ↓↑
+</div>
+<div class="dim" style="font-size: 11px; margin-top: 4px;">
+  touch-action: none — the browser should NOT try to scroll natively.
+  All touch events should appear in the log below.
+</div>
+
+<h2>2. Event Log</h2>
+<div class="log" id="log"></div>
+<button onclick="clearLog()">Clear log</button>
+
+<h2>3. Scroll Container Search</h2>
+<button onclick="findScrollContainers()">Find scrollable divs</button>
+<div id="scroll-results"></div>
+
+<h2>4. Device Info</h2>
+<div class="box">
+  <div id="device-info"></div>
+</div>
+
+<script>
+const log = document.getElementById('log');
+const touchpad = document.getElementById('touchpad');
+
+function addLog(type, text) {
+  const div = document.createElement('div');
+  div.className = 'event-' + type;
+  const time = new Date().toISOString().slice(11, 23);
+  div.textContent = `[${time}] ${type}: ${text}`;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+function clearLog() {
+  log.innerHTML = '';
+}
+
+// Log ALL touch events on the touchpad
+['touchstart', 'touchmove', 'touchend', 'touchcancel'].forEach(type => {
+  touchpad.addEventListener(type, (e) => {
+    e.preventDefault();
+    const touches = e.touches.length;
+    const y = e.touches[0]?.clientY ?? e.changedTouches[0]?.clientY ?? '?';
+    addLog(type, `touches=${touches} y=${y}`);
+  }, { passive: false });
+});
+
+// Also log touch events on window (capture) to see if they bubble
+['touchstart', 'touchmove', 'touchend'].forEach(type => {
+  window.addEventListener(type, (e) => {
+    const target = e.target.tagName || e.target.constructor.name;
+    addLog(type, `WINDOW capture target=${target} y=${e.touches[0]?.clientY ?? '?'}`);
+  }, { capture: true, passive: true });
+});
+
+// Log wheel events
+window.addEventListener('wheel', (e) => {
+  addLog('wheel', `deltaY=${e.deltaY} target=${e.target.tagName}`);
+}, { passive: true });
+
+// Device info
+const info = document.getElementById('device-info');
+info.innerHTML = `
+  <div><span class="dim">User Agent:</span> ${navigator.userAgent}</div>
+  <div><span class="dim">Touch support:</span> ${'ontouchstart' in window ? 'YES' : 'NO'}</div>
+  <div><span class="dim">Max touch points:</span> ${navigator.maxTouchPoints}</div>
+  <div><span class="dim">Viewport:</span> ${window.innerWidth}×${window.innerHeight}</div>
+  <div><span class="dim">DPR:</span> ${window.devicePixelRatio}</div>
+  <div><span class="dim">Platform:</span> ${navigator.platform}</div>
+`;
+
+// Find scrollable divs
+function findScrollContainers() {
+  const results = document.getElementById('scroll-results');
+  const allDivs = document.querySelectorAll('div');
+  const scrollable = [];
+  allDivs.forEach((div, i) => {
+    const style = getComputedStyle(div);
+    if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+      scrollable.push({
+        index: i,
+        overflowY: style.overflowY,
+        scrollHeight: div.scrollHeight,
+        clientHeight: div.clientHeight,
+        canScroll: div.scrollHeight > div.clientHeight,
+        className: div.className,
+        parent: div.parentElement?.tagName,
+      });
+    }
+  });
+
+  if (scrollable.length === 0) {
+    results.innerHTML = '<div class="red">No scrollable divs found!</div>';
+  } else {
+    results.innerHTML = scrollable.map(s =>
+      `<div class="box">
+        <div><span class="dim">Div #${s.index}:</span> ${s.className || '(no class)'}</div>
+        <div><span class="dim">overflowY:</span> ${s.overflowY}</div>
+        <div><span class="dim">scrollHeight:</span> ${s.scrollHeight}</div>
+        <div><span class="dim">clientHeight:</span> ${s.clientHeight}</div>
+        <div><span class="dim">canScroll:</span> ${s.canScroll ? '<span class="green">YES</span>' : '<span class="red">NO</span>'}</div>
+      </div>`
+    ).join('');
+  }
+}
+
+addLog('info', 'Diagnostic ready. Swipe in the box above.');
+</script>
+</body>
+</html>
