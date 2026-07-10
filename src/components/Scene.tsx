@@ -20,7 +20,7 @@ import { getSharedTexture } from '@/lib/textureCache';
 import { CameraRig } from './CameraRig';
 import { ParticleField } from './ParticleField';
 import { PortfolioCard } from './PortfolioCard';
-import { GLBAssetSafe } from './GLBAsset';
+import { GLBAssetSafe, HERO_GLB_PATH } from './GLBAsset';
 import { BlobShadow } from './BlobShadow';
 import { YouTubeOrbitField } from './YouTubeOrbitField';
 import { getFallbackYouTubeThumbnailUrls } from '@/hooks/useYouTubeVideos';
@@ -496,7 +496,11 @@ function SceneContents({ tier, reducedMotion }: SceneContentsProps) {
             render (without lights, MeshStandardMaterial is black), so we add
             an ambient + directional light here. These lights ONLY affect lit
             materials — every other object in the scene uses RedLifeFlatMaterial
-            with `lights = false`, so they're completely unaffected. */}
+            with `lights = false`, so they're completely unaffected.
+
+            PATH NOTE: the GLB path is built from import.meta.env.BASE_URL so
+            it works on GitHub Pages (served from /REPO_NAME/) and on a custom
+            domain (served from /). See GLBAsset.tsx for details. */}
         <group ref={heroRef}>
           {/* Lighting for the GLB only. Intensity tuned to look "lit but
               moody" — adjust if your model comes in too dark or too bright.
@@ -507,7 +511,7 @@ function SceneContents({ tier, reducedMotion }: SceneContentsProps) {
           <directionalLight position={[3, 5, 5]} intensity={1.2} color="#FFFFFF" />
 
           <GLBAssetSafe
-            path="/assets/models/hero.glb"
+            path={HERO_GLB_PATH}
             usePlaceholder={false}
             rimColor="#FF003C"
             rimPower={2.3}
