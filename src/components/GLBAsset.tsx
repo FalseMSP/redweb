@@ -508,11 +508,17 @@ class ErrorBoundaryLite extends Component<EBProps, EBState> {
 //
 // PATH NOTE: import.meta.env.BASE_URL is set by Vite from the `base` config
 // option. On GitHub Pages (project site), the workflow sets VITE_BASE_PATH
-// to /REPO_NAME, so BASE_URL = '/REPO_NAME/'. Locally or with a custom
-// domain, BASE_URL = '/'. We join BASE_URL + 'assets/models/hero.glb' so
-// the path is always correct regardless of where the site is hosted.
+// to /REPO_NAME, so BASE_URL = '/REPO_NAME' (no trailing slash). Locally or
+// with a custom domain, BASE_URL = '/'.
+//
+// We construct the path as BASE_URL + '/assets/models/hero.glb'. The leading
+// slash on '/assets/...' ensures there's always a separator between BASE_URL
+// and the path. The .replace(/\/+/g, '/') collapses any double slashes that
+// result when BASE_URL ends with '/' (e.g. '/' + '/assets/...' → '//assets/...'
+// → '/assets/...').
+//
 // A hardcoded '/assets/models/hero.glb' would 404 on GitHub Pages because
 // it resolves to https://USERNAME.github.io/assets/models/hero.glb
 // (missing the /REPO_NAME/ prefix).
-export const HERO_GLB_PATH = (import.meta.env.BASE_URL + 'assets/models/hero.glb').replace(/\/+/g, '/');
+export const HERO_GLB_PATH = (import.meta.env.BASE_URL + '/assets/models/hero.glb').replace(/\/+/g, '/');
 useGLTF.preload(HERO_GLB_PATH, true);
