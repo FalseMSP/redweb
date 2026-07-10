@@ -41,13 +41,21 @@ const loader = new THREE.TextureLoader();
  * loaded, same as a raw TextureLoader.load() would). `onReady` fires
  * exactly once per call, either on the next microtask (if the URL was
  * already resolved by an earlier caller) or once the load completes.
+ *
+ * Set `localStorage.debug_textures = '1'` in the browser console to enable
+ * verbose logging of every load/error/callback — useful for diagnosing
+ * "texture never loads" issues.
  */
 export function getSharedTexture(
   url: string,
   onReady?: (aspect: number | null, errored: boolean) => void,
 ): THREE.Texture {
+  const DEBUG = typeof localStorage !== 'undefined' && localStorage.getItem('debug_textures') === '1';
+  const shortUrl = url.length > 60 ? url.slice(0, 57) + '...' : url;
+
   const existing = cache.get(url);
   if (existing) {
+    if (DEBUG) console.log(`[textureCache] cache HIT: ${shortUrl}`, { aspect: existing.aspect, errored: existing.errored });
     if (onReady) {
       if (existing.aspect !== null || existing.errored) {
         // Already resolved — notify asynchronously so callers can rely on
@@ -60,6 +68,7 @@ export function getSharedTexture(
     return existing.texture;
   }
 
+  if (DEBUG) console.log(`[textureCache] cache MISS — starting load: ${shortUrl}`);
   const entry: CacheEntry = {
     // Placeholder until loader.load below assigns the real texture — the
     // loader returns the (initially empty) Texture synchronously, so this
@@ -75,10 +84,12 @@ export function getSharedTexture(
     url,
     (loadedTex) => {
       const img = loadedTex.image as HTMLImageElement | undefined;
-      const aspect =
-        img?.naturalWidth && img?.naturalHeight ? img.naturalWidth / img.naturalHeight : null;
+      const nw = img?.naturalWidth ?? 0;
+      const nh = img?.naturalHeight ?? 0;
+      const aspect = nw && nh ? nw / nh : null;
       loadedTex.needsUpdate = true;
       entry.aspect = aspect;
+      if (DEBUG) console.log(`[textureCache] LOADED: ${shortUrl}`, { naturalWidth: nw, naturalHeight: nh, aspect });
       const cbs = entry.callbacks;
       entry.callbacks = [];
       cbs.forEach((cb) => cb(aspect, false));
@@ -86,6 +97,7 @@ export function getSharedTexture(
     undefined,
     () => {
       entry.errored = true;
+      if (DEBUG) console.warn(`[textureCache] ERRORED: ${shortUrl}`);
       const cbs = entry.callbacks;
       entry.callbacks = [];
       cbs.forEach((cb) => cb(null, true));

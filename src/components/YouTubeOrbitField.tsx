@@ -385,25 +385,34 @@ function YouTubeCard3D({
     const idleSway = Math.sin(state.idleTime * 0.5 + idleSwayPhase) * 0.025 * idleFactor;
     g.rotation.z += idleSway;
 
-    // Rim intensity: pulse the CARD FACE while texture is still loading,
-    // but keep the BORDER solid (no shimmer). The border should always be
-    // a stable, visible frame — shimmering it made it look like the border
-    // was "not loading" when in fact it was just pulsing dim.
+    // Rim intensity — matches PortfolioCard's behavior exactly.
     //
-    // textureLoading is true when we have no texture AND no error yet (i.e.
-    // still in the process of loading, including fallback transitions where
-    // the new texture hasn't resolved yet).
+    // KEY FIX: the border rim is NOT multiplied by visibility `v`. The old
+    // code did `borderBase *= v`, which meant the border was invisible
+    // whenever the card was at v=0 (intro/close phases) or ramping up
+    // (reveal phase). On Firefox/Linux this caused the border to never
+    // appear — the card was visible (face rendered) but the border was
+    // stuck at rim intensity 0 because v was still damping toward 1.
+    //
+    // PortfolioCard (the outer ring) never multiplies its border by v, so
+    // its border is always at full intensity. We now match that behavior.
+    // The border is only visible when the card is on-screen anyway (when
+    // v=0 the card is 10 units below the floor + scaled to 0.5, so even
+    // though the border is "at full intensity" it's not in the camera
+    // frustum and doesn't appear on screen).
+    //
+    // The shimmer is applied to BOTH the face rim and the border rim —
+    // this matches PortfolioCard and gives a clear "loading" indicator.
     const textureLoading = !cardTexture && !textureError;
     let rimBase = 0.7 + state.hoverT * 0.8;
-    let borderBase = 1.2 + state.hoverT * 0.6;
+    let borderBase = 1.4 + state.hoverT * 0.8;
     if (textureLoading) {
       const shimmer = 0.5 + Math.sin(state.idleTime * 3 + idlePhase) * 0.5;
-      // Only shimmer the card face rim — NOT the border.
       rimBase += shimmer * 0.8;
+      borderBase += shimmer * 0.6;
     }
-    // Fade rim out as the card exits (when cardVisibility drops back to 0).
+    // Only fade the CARD FACE rim by visibility — NOT the border.
     rimBase *= v;
-    borderBase *= v;
     setFlatRimIntensity(material, rimBase);
     setFlatRimIntensity(borderMaterial, borderBase);
   });
@@ -491,6 +500,7 @@ function YouTubeCard3D({
         castShadow={false}
         receiveShadow={false}
         frustumCulled={false}
+        renderOrder={1}
       />
     </group>
   );
@@ -513,6 +523,7 @@ function easeOutBack(t: number): number {
 
 function makeCardGeometry(width: number, height: number, lowTier: boolean): THREE.BufferGeometry {
   if (lowTier) {
+    // PlaneGeometry generates UVs in [0,1] — correct.
     return new THREE.PlaneGeometry(width, height, 1, 1);
   }
   const radius = Math.min(width, height) * 0.08;
@@ -528,7 +539,22 @@ function makeCardGeometry(width: number, height: number, lowTier: boolean): THRE
   shape.quadraticCurveTo(-w, h, -w, h - radius);
   shape.lineTo(-w, -h + radius);
   shape.quadraticCurveTo(-w, -h, -w + radius, -h);
-  return new THREE.ShapeGeometry(shape, 6);
+  const geo = new THREE.ShapeGeometry(shape, 6);
+
+  // CRITICAL FIX: ShapeGeometry generates UVs as raw (x, y) vertex positions
+  // — NOT normalized to [0, 1]. See PortfolioCard.tsx for the full explanation.
+  // Without this normalization, textures appear squashed/distorted because
+  // UVs outside [0,1] are clamped to the edge pixel.
+  const posAttr = geo.attributes.position;
+  const uvAttr = geo.attributes.uv;
+  for (let i = 0; i < posAttr.count; i++) {
+    const x = posAttr.getX(i);
+    const y = posAttr.getY(i);
+    uvAttr.setXY(i, (x / width) + 0.5, (y / height) + 0.5);
+  }
+  uvAttr.needsUpdate = true;
+
+  return geo;
 }
 
 function makeBorderGeometry(width: number, height: number, lowTier: boolean): THREE.BufferGeometry {

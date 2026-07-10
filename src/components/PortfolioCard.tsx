@@ -355,6 +355,7 @@ export function PortfolioCard({
         castShadow={false}
         receiveShadow={false}
         frustumCulled={false}
+        renderOrder={1}
       />
     </group>
   );
@@ -374,6 +375,7 @@ function easeOutBack(t: number): number {
 
 function makeCardGeometry(width: number, height: number, lowTier: boolean): THREE.BufferGeometry {
   if (lowTier) {
+    // PlaneGeometry generates UVs in [0,1] — correct.
     return new THREE.PlaneGeometry(width, height, 1, 1);
   }
   const radius = Math.min(width, height) * 0.08;
@@ -389,7 +391,28 @@ function makeCardGeometry(width: number, height: number, lowTier: boolean): THRE
   shape.quadraticCurveTo(-w, h, -w, h - radius);
   shape.lineTo(-w, -h + radius);
   shape.quadraticCurveTo(-w, -h, -w + radius, -h);
-  return new THREE.ShapeGeometry(shape, 6);
+  const geo = new THREE.ShapeGeometry(shape, 6);
+
+  // CRITICAL FIX: ShapeGeometry generates UVs as raw (x, y) vertex positions
+  // — NOT normalized to [0, 1]. For a card of width 2.0, UVs go from -1.0
+  // to 1.0. With ClampToEdgeWrapping (the default), UVs outside [0,1] are
+  // clamped to the edge pixel, causing textures to appear squashed/distorted
+  // (half the card shows a stretched edge, the other half shows the texture
+  // compressed). This was the root cause of "thumbnails look squashed and
+  // weird" and "borders don't show up other than a small red circle".
+  //
+  // Fix: remap UVs from [-width/2, width/2] × [-height/2, height/2]
+  // to [0, 1] × [0, 1].
+  const posAttr = geo.attributes.position;
+  const uvAttr = geo.attributes.uv;
+  for (let i = 0; i < posAttr.count; i++) {
+    const x = posAttr.getX(i);
+    const y = posAttr.getY(i);
+    uvAttr.setXY(i, (x / width) + 0.5, (y / height) + 0.5);
+  }
+  uvAttr.needsUpdate = true;
+
+  return geo;
 }
 
 function makeBorderGeometry(width: number, height: number, lowTier: boolean): THREE.BufferGeometry {

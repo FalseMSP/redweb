@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>RedWeb Texture Diagnostic</title>
+<style>
+body { font-family: monospace; background: #05060A; color: #e0e0e0; padding: 20px; }
+h1 { color: #FF003C; }
+h2 { color: #FF6B6B; margin-top: 30px; }
+.card { background: #111; border: 1px solid #333; border-radius: 8px; padding: 16px; margin: 8px 0; }
+.result { padding: 8px; margin: 4px 0; border-radius: 4px; }
+.result.ok { background: #1a3a1a; border-left: 4px solid #4a4; }
+.result.err { background: #3a1a1a; border-left: 4px solid #a44; }
+.result.loading { background: #1a1a3a; border-left: 4px solid #44a; }
+img { max-width: 200px; max-height: 150px; display: block; margin: 8px 0; border: 1px solid #444; }
+.dim { color: #888; }
+.red { color: #FF003C; }
+canvas { border: 1px solid #444; display: block; margin: 8px 0; }
+</style>
+</head>
+<body>
+<h1>RedWeb Texture Loading Diagnostic</h1>
+<p class="dim">This page tests whether YouTube thumbnail textures load correctly in your browser.
+Open the browser console (F12) for detailed logs.</p>
+
+<h2>1. Raw Image Load Test</h2>
+<p class="dim">Tests if the browser can load each thumbnail URL directly as an &lt;img&gt; element.</p>
+<div id="img-tests"></div>
+
+<h2>2. WebGL Texture Load Test</h2>
+<p class="dim">Tests if THREE.js can load each URL as a GPU texture (tests CORS + WebGL texture upload).</p>
+<div id="webgl-tests"></div>
+
+<h2>3. UV Mapping Visualization</h2>
+<p class="dim">Shows how the texture SHOULD map to the card geometry (with the UV fix applied).</p>
+<canvas id="uv-canvas" width="600" height="300"></canvas>
+
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js';
+
+// URLs to test — same ones used by the actual site
+const PORTFOLIO_URLS = [
+  'https://i.ytimg.com/vi/xYEn5TlQ6Yw/sddefault.jpg',
+  'https://i.ytimg.com/vi/FsLxQOMi2Yc/sddefault.jpg',
+  'https://i.ytimg.com/vi/GO7JgBozQ8k/sddefault.jpg',
+];
+
+const YT_LONG_URLS = [
+  'https://i.ytimg.com/vi/CiJRgfrzK38/mqdefault.jpg',
+  'https://i.ytimg.com/vi/XN5OXq3ApS8/mqdefault.jpg',
+  'https://i.ytimg.com/vi/R9XKhTUpPKM/mqdefault.jpg',
+  'https://i.ytimg.com/vi/HtCk7lwAgBk/mqdefault.jpg',
+];
+
+const YT_SHORT_URLS = [
+  'https://i.ytimg.com/vi/0nwkgS4IjQ8/frame0.jpg',
+  'https://i.ytimg.com/vi/Bc29JzH6wyw/frame0.jpg',
+  'https://i.ytimg.com/vi/8-FieY59qFo/frame0.jpg',
+  'https://i.ytimg.com/vi/08pLRPfadRQ/frame0.jpg',
+];
+
+// Short fallback URLs
+const YT_SHORT_FALLBACKS = [
+  'https://i.ytimg.com/vi/0nwkgS4IjQ8/oardefault.jpg',
+  'https://i.ytimg.com/vi/0nwkgS4IjQ8/hqdefault.jpg',
+];
+
+const ALL_URLS = [...PORTFOLIO_URLS, ...YT_LONG_URLS, ...YT_SHORT_URLS, ...YT_SHORT_FALLBACKS];
+
+// === 1. Raw Image Load Test ===
+const imgContainer = document.getElementById('img-tests');
+
+function testImgLoad(url) {
+  const div = document.createElement('div');
+  div.className = 'result loading';
+  div.innerHTML = `<span class="dim">LOADING</span> ${url}`;
+  imgContainer.appendChild(div);
+
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    div.className = 'result ok';
+    div.innerHTML = `<span class="dim">OK</span> ${url}<br>
+      <span class="dim">naturalWidth:</span> ${img.naturalWidth},
+      <span class="dim">naturalHeight:</span> ${img.naturalHeight},
+      <span class="dim">aspect:</span> ${(img.naturalWidth / img.naturalHeight).toFixed(4)}`;
+    img.style.maxWidth = '150px';
+    div.appendChild(img);
+  };
+  img.onerror = () => {
+    div.className = 'result err';
+    div.innerHTML = `<span class="red">ERROR</span> ${url}<br>
+      <span class="dim">Failed to load (network error, CORS, or 404)</span>`;
+  };
+  img.src = url;
+}
+
+ALL_URLS.forEach(testImgLoad);
+
+// === 2. WebGL Texture Load Test ===
+const webglContainer = document.getElementById('webgl-tests');
+
+// Create a small renderer for texture testing
+const renderer = new THREE.WebGLRenderer({ alpha: true });
+renderer.setSize(2, 2); // tiny — we just need it for texture upload
+document.body.appendChild(renderer.domElement);
+renderer.domElement.style.display = 'none';
+
+const loader = new THREE.TextureLoader();
+loader.setCrossOrigin('anonymous');
+
+function testWebGLTextureLoad(url) {
+  const div = document.createElement('div');
+  div.className = 'result loading';
+  div.innerHTML = `<span class="dim">LOADING</span> ${url}`;
+  webglContainer.appendChild(div);
+
+  loader.load(
+    url,
+    (texture) => {
+      const img = texture.image;
+      const w = img?.naturalWidth ?? 0;
+      const h = img?.naturalHeight ?? 0;
+      div.className = 'result ok';
+      div.innerHTML = `<span class="dim">OK (WebGL)</span> ${url}<br>
+        <span class="dim">dimensions:</span> ${w}×${h},
+        <span class="dim">aspect:</span> ${w && h ? (w / h).toFixed(4) : 'null'},
+        <span class="dim">colorSpace:</span> ${texture.colorSpace}`;
+
+      // Try to upload the texture to the GPU
+      try {
+        const geo = new THREE.PlaneGeometry(1, 1);
+        const mat = new THREE.MeshBasicMaterial({ map: texture });
+        const mesh = new THREE.Mesh(geo, mat);
+        const scene = new THREE.Scene();
+        scene.add(mesh);
+        const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 10);
+        cam.position.z = 5;
+        renderer.render(scene, cam);
+        div.innerHTML += `<br><span class="dim">GPU upload: OK</span>`;
+      } catch (e) {
+        div.innerHTML += `<br><span class="red">GPU upload FAILED:</span> ${e.message}`;
+      }
+    },
+    undefined,
+    () => {
+      div.className = 'result err';
+      div.innerHTML = `<span class="red">ERROR (WebGL)</span> ${url}`;
+    }
+  );
+}
+
+ALL_URLS.forEach(testWebGLTextureLoad);
+
+// === 3. UV Mapping Visualization ===
+const canvas = document.getElementById('uv-canvas');
+const ctx = canvas.getContext('2d');
+
+// Draw the BEFORE (broken) and AFTER (fixed) UV mappings
+function drawUVComparison() {
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, 600, 300);
+
+  // --- LEFT: Broken UVs (ShapeGeometry default) ---
+  ctx.fillStyle = '#333';
+  ctx.fillRect(20, 40, 250, 220);
+  ctx.fillStyle = '#FF003C';
+  ctx.font = '14px monospace';
+  ctx.fillText('BEFORE (broken): UVs in [-1, 1]', 20, 30);
+
+  // Draw the UV space [0,1] as a small box in the corner
+  ctx.fillStyle = '#44a';
+  ctx.fillRect(145, 155, 50, 50); // [0,1] box centered in [-1,1]
+  ctx.fillStyle = '#aaa';
+  ctx.font = '10px monospace';
+  ctx.fillText('[0,1] range', 150, 220);
+
+  // Draw the card outline
+  ctx.strokeStyle = '#FF003C';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(20, 40, 250, 220);
+
+  ctx.fillStyle = '#888';
+  ctx.fillText('UV range: [-1.0, 1.0]', 60, 270);
+  ctx.fillText('→ texture clamped to edge', 60, 285);
+
+  // --- RIGHT: Fixed UVs (normalized) ---
+  ctx.fillStyle = '#333';
+  ctx.fillRect(330, 40, 250, 220);
+  ctx.fillStyle = '#4a4';
+  ctx.font = '14px monospace';
+  ctx.fillText('AFTER (fixed): UVs in [0, 1]', 330, 30);
+
+  // Draw the UV space [0,1] filling the entire card
+  ctx.fillStyle = '#4a4';
+  ctx.fillRect(330, 40, 250, 220);
+  ctx.fillStyle = '#fff';
+  ctx.font = '10px monospace';
+  ctx.fillText('[0,1] range = full texture', 380, 150);
+
+  // Draw the card outline
+  ctx.strokeStyle = '#FF003C';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(330, 40, 250, 220);
+
+  ctx.fillStyle = '#888';
+  ctx.fillText('UV range: [0.0, 1.0]', 370, 270);
+  ctx.fillText('→ texture maps correctly', 370, 285);
+}
+
+drawUVComparison();
+</script>
+</body>
+</html>
