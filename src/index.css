@@ -41,6 +41,17 @@ body,
   overscroll-behavior: none;
 }
 
+/* Canvas element — allow vertical panning (touch swipes scroll the scene).
+   `touch-action: pan-y` tells the browser: "I'll handle horizontal gestures,
+   but let vertical scrolling through to the default handler." Combined with
+   the touch event forwarding in Scene.tsx, this gives mobile users the same
+   scroll behavior as desktop.
+   Do NOT set `touch-action: none` on the canvas — that would block all
+   touch scrolling on mobile. */
+.canvas-host canvas {
+  touch-action: pan-y;
+}
+
 /* dvh-aware modal sizing for iOS Safari dynamic toolbar (spec §7) */
 .dvh-full {
   height: 100dvh;

@@ -250,10 +250,19 @@ function SceneContents({ tier, reducedMotion }: SceneContentsProps) {
   const disableParallax = reducedMotion || tier === 'low';
   const parallax = useRef({ x: 0, y: 0 });
 
-  // --- Wheel scroll forwarder (cached) ---------------------------------------
-  // The canvas can intercept wheel events before they reach drei's scroll
-  // container. This listener finds the scroll container ONCE and caches it,
-  // then forwards wheel deltas to it. Cache is invalidated on window resize.
+  // --- Scroll forwarding (wheel + touch) -------------------------------------
+  // The canvas can intercept wheel AND touch events before they reach drei's
+  // scroll container. This listener finds the scroll container ONCE and caches
+  // it, then forwards wheel deltas and touch drags to it. Cache is invalidated
+  // on window resize.
+  //
+  // MOBILE FIX: the original code only handled `wheel` events (desktop mice).
+  // On mobile, swiping on the canvas produced `touchstart`/`touchmove`/
+  // `touchend` events that the canvas swallowed — drei's scroll container
+  // never saw them, so scrolling didn't work. Now we forward touch events
+  // too, manually translating touch deltas to scrollTop changes. This gives
+  // mobile users the same scroll behavior as desktop (with momentum via
+  // drei's built-in damping).
   const scrollContainerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -288,6 +297,7 @@ function SceneContents({ tier, reducedMotion }: SceneContentsProps) {
     };
     window.addEventListener('resize', onResize);
 
+    // --- Wheel (desktop) ---
     const onWheel = (e: WheelEvent) => {
       if (document.body.classList.contains('modal-open')) return;
       // Use cached container; re-lookup only if cache is empty.
@@ -301,11 +311,72 @@ function SceneContents({ tier, reducedMotion }: SceneContentsProps) {
       container.scrollTop += e.deltaY;
     };
 
+    // --- Touch (mobile) ---
+    // Track the last touch Y position to compute drag deltas. We use
+    // `passive: false` so we can call preventDefault() — this stops the
+    // browser from also trying to scroll the page body (which has
+    // overflow:hidden and would cause weird rubber-banding on iOS).
+    let touchStartY = 0;
+    let lastTouchY = 0;
+    let isTouching = false;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (document.body.classList.contains('modal-open')) return;
+      if (e.touches.length !== 1) return; // ignore multi-touch (pinch-zoom etc)
+      touchStartY = e.touches[0].clientY;
+      lastTouchY = touchStartY;
+      isTouching = true;
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!isTouching) return;
+      if (document.body.classList.contains('modal-open')) return;
+      if (e.touches.length !== 1) return;
+
+      let container = scrollContainerRef.current;
+      if (!container) {
+        container = findScrollContainer();
+        scrollContainerRef.current = container;
+      }
+      if (!container) return;
+
+      // Prevent the browser's native scroll — we're handling it ourselves.
+      e.preventDefault();
+
+      const currentY = e.touches[0].clientY;
+      const deltaY = lastTouchY - currentY; // dragging down = positive = scroll down
+      container.scrollTop += deltaY;
+      lastTouchY = currentY;
+    };
+
+    const onTouchEnd = () => {
+      isTouching = false;
+    };
+
+    // Attach wheel to window (desktop). Attach touch to the canvas itself —
+    // touch events target the element under the finger, and the canvas is
+    // what's under the finger on mobile. Using `passive: false` on touchmove
+    // is critical so we can call preventDefault().
     window.addEventListener('wheel', onWheel, { passive: false });
+
+    const canvas = document.querySelector('canvas');
+    if (canvas) {
+      canvas.addEventListener('touchstart', onTouchStart, { passive: true });
+      canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+      canvas.addEventListener('touchend', onTouchEnd, { passive: true });
+      canvas.addEventListener('touchcancel', onTouchEnd, { passive: true });
+    }
+
     return () => {
       clearTimeout(initTimer);
       window.removeEventListener('resize', onResize);
       window.removeEventListener('wheel', onWheel);
+      if (canvas) {
+        canvas.removeEventListener('touchstart', onTouchStart);
+        canvas.removeEventListener('touchmove', onTouchMove);
+        canvas.removeEventListener('touchend', onTouchEnd);
+        canvas.removeEventListener('touchcancel', onTouchEnd);
+      }
     };
   }, []);
 
